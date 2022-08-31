@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -166,7 +167,7 @@ func (g *Game) Update() error {
 // Draw draws the game screen.
 // Draw is called every frame (typically 1/60[s] for 60Hz display).
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Write your game's rendering.
+	screen.Fill(color.RGBA{0xff, 0xff, 0xff, 0xff})
 	g.drawBike(screen)
 	g.drawLogs(screen)
 }
