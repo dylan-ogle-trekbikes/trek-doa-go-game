@@ -28,9 +28,10 @@ const (
 	ScreenWidth   = 800
 	ScreenHeight  = 420
 	Baseline      = ScreenHeight / 1.75
-	Gravity       = 19
-	Acceleration  = 2
+	Gravity       = 15
+	Acceleration  = 1
 	LogSpawnDelay = 750
+	DefaultBikeX  = 25
 )
 
 var (
@@ -38,13 +39,15 @@ var (
 	bikeVy       float64
 	bikeBaseline int
 
-	logImage *ebiten.Image
-	logWidth = 45.0
-	logSpeed = 6.0
+	logImage       *ebiten.Image
+	logWidth       = 45.0
+	logHeight      = 45.0
+	logSpeed       = 6.0
+	lastSpawnedLog int64
 
 	isJumping = false
 
-	lastSpawnedLog int64
+	isPaused = false
 )
 
 // Custom game functions
@@ -70,17 +73,18 @@ func (g *Game) init() {
 func (g *Game) drawBike(screen *ebiten.Image) {
 	options := &ebiten.DrawImageOptions{}
 	//move to left side of screen
-	options.GeoM.Translate(25, float64(g.yPos))
+	options.GeoM.Translate(DefaultBikeX, float64(g.yPos))
 
 	screen.DrawImage(bikeImage, options)
 }
 
 //Log functions
 
-func (g *Game) drawLog(screen *ebiten.Image, pos float64) {
+func (g *Game) drawLog(screen *ebiten.Image, xPos float64) {
 	options := &ebiten.DrawImageOptions{}
 	_, h := logImage.Size()
-	options.GeoM.Translate(pos, Baseline-float64(h))
+	yPos := Baseline - float64(h)
+	options.GeoM.Translate(xPos, yPos)
 	screen.DrawImage(logImage, options)
 }
 
@@ -102,7 +106,6 @@ func (g *Game) spawnLogs() {
 
 	// flip the coin
 	shouldSpawn := rand.Intn(100)
-	println(time.Now().UnixMilli() - lastSpawnedLog)
 	if shouldSpawn > 90 {
 		g.createLog()
 	}
@@ -142,7 +145,7 @@ func (g *Game) moveLog(logIndex int) {
 
 //Player functions
 
-func (g *Game) isKeyJustPressed() bool {
+func (g *Game) isJumpKeyJustPressed() bool {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		return true
 	}
@@ -150,7 +153,7 @@ func (g *Game) isKeyJustPressed() bool {
 }
 
 func (g *Game) handleMovement() {
-	if g.isKeyJustPressed() && !isJumping {
+	if g.isJumpKeyJustPressed() && !isJumping {
 		g.vy = -Gravity
 		g.yPos++
 		isJumping = true
@@ -179,9 +182,92 @@ func (g *Game) handleMovement() {
 	}
 }
 
+func (g *Game) anyHits() bool {
+	for i := 0; i < g.logXs.Length(); i++ {
+		if g.hit(i) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *Game) hit(logIndex int) bool {
+	const (
+		bikeWidth  = 80
+		bikeHeight = 60
+	)
+
+	var (
+		l1_x int
+		l1_y int
+		r1_x int
+		r1_y int
+
+		l2_x int
+		l2_y int
+		r2_x int
+		r2_y int
+	)
+
+	x0 := DefaultBikeX
+	x1 := DefaultBikeX + bikeWidth
+
+	y0 := g.yPos + bikeHeight
+	y1 := g.yPos
+
+	l1_x = x0
+	l1_y = y0
+
+	r1_x = x1
+	r1_y = y1
+
+	// println("Bike position is", "(", l1_x, ",", l1_y, ")", ", (", r1_x, ",", r1_y, ")")
+
+	//get log box
+	_, h := logImage.Size()
+	log_x0 := g.logXs.ValueAt(logIndex)
+	log_x1 := log_x0 + logWidth
+
+	log_y0 := Baseline - float64(h)
+	log_y1 := Baseline
+
+	l2_x = int(log_x0)
+	l2_y = int(log_y0)
+
+	r2_x = int(log_x1)
+	r2_y = int(log_y1)
+	// println("Log position is", "(", l2_x, ",", l2_y, ")", ", (", r2_x, ",", r2_y, ")")
+
+	//determine if bike and log are overlapping
+	// If one rectangle is on left side of other
+	if l1_x > r2_x || l2_x > r1_x {
+		return false
+
+	}
+
+	// If one rectangle is above other
+	if r1_y > l2_y || r2_y > l1_y {
+		return false
+	}
+	return true
+}
+
 // Update proceeds the game state.
 // Update is called every tick (1/60 [s] by default).
 func (g *Game) Update() error {
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		isPaused = !isPaused
+	}
+
+	if isPaused {
+		return nil
+	}
+
+	if g.anyHits() {
+		isPaused = true
+		println("GAME OVER")
+	}
 
 	g.spawnLogs()
 	g.moveLogs()
