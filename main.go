@@ -3,6 +3,8 @@ package main
 import (
 	"image/color"
 	"log"
+	"math/rand"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -23,11 +25,12 @@ type Game struct {
 }
 
 const (
-	ScreenWidth  = 800
-	ScreenHeight = 420
-	Baseline     = ScreenHeight / 1.75
-	Gravity      = 19
-	Acceleration = 2
+	ScreenWidth   = 800
+	ScreenHeight  = 420
+	Baseline      = ScreenHeight / 1.75
+	Gravity       = 19
+	Acceleration  = 2
+	LogSpawnDelay = 750
 )
 
 var (
@@ -40,6 +43,8 @@ var (
 	logSpeed = 6.0
 
 	isJumping = false
+
+	lastSpawnedLog int64
 )
 
 // Custom game functions
@@ -60,7 +65,6 @@ func (g *Game) init() {
 	calculatedBaseline := Baseline - h
 	g.yPos = calculatedBaseline
 	bikeBaseline = calculatedBaseline
-
 }
 
 func (g *Game) drawBike(screen *ebiten.Image) {
@@ -70,6 +74,8 @@ func (g *Game) drawBike(screen *ebiten.Image) {
 
 	screen.DrawImage(bikeImage, options)
 }
+
+//Log functions
 
 func (g *Game) drawLog(screen *ebiten.Image, pos float64) {
 	options := &ebiten.DrawImageOptions{}
@@ -86,8 +92,26 @@ func (g *Game) drawLogs(screen *ebiten.Image) {
 	}
 }
 
+func (g *Game) spawnLogs() {
+	//wait at least 1-3 seconds before spawning a log
+	if (time.Now().UnixMilli() - lastSpawnedLog) < LogSpawnDelay {
+		return
+	}
+	//flip a coin if a log should spawn
+	rand.Seed(time.Now().UnixNano())
+
+	// flip the coin
+	shouldSpawn := rand.Intn(100)
+	println(time.Now().UnixMilli() - lastSpawnedLog)
+	if shouldSpawn > 90 {
+		g.createLog()
+	}
+
+}
+
 func (g *Game) createLog() {
-	g.logXs.Push(ScreenWidth - logWidth)
+	g.logXs.Push(ScreenWidth)
+	lastSpawnedLog = time.Now().UnixMilli()
 }
 
 func (g *Game) removeLog() {
@@ -112,9 +136,11 @@ func (g *Game) moveLogs() {
 func (g *Game) moveLog(logIndex int) {
 	g.logXs[logIndex] = g.logXs[logIndex] - logSpeed
 	if g.isLogOffScreen(g.logXs[logIndex]) {
-		g.removeLog()
+		// g.removeLog()
 	}
 }
+
+//Player functions
 
 func (g *Game) isKeyJustPressed() bool {
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
@@ -126,7 +152,7 @@ func (g *Game) isKeyJustPressed() bool {
 func (g *Game) handleMovement() {
 	if g.isKeyJustPressed() && !isJumping {
 		g.vy = -Gravity
-		g.yPos += 5
+		g.yPos++
 		isJumping = true
 	}
 
@@ -157,6 +183,7 @@ func (g *Game) handleMovement() {
 // Update is called every tick (1/60 [s] by default).
 func (g *Game) Update() error {
 
+	g.spawnLogs()
 	g.moveLogs()
 
 	g.handleMovement()
@@ -181,7 +208,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 func NewGame() *Game {
 	g := &Game{}
 	g.init()
-	g.createLog()
 	return g
 }
 
