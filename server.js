@@ -1,4 +1,6 @@
+const e = require("express");
 var express = require("express");
+const { resolve } = require("path");
 var app = express();
 
 app.use(express.static("./dist"));

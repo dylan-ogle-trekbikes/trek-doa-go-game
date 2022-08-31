@@ -7,37 +7,57 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-// Game implements ebiten.Game interface.
-type Game struct{}
+type Game struct {
+	//player position
+	yPos int
+	vy   int
+
+	//active logs position
+	logXs []int
+
+	isGameOver bool
+}
 
 const (
 	ScreenWidth  = 800
 	ScreenHeight = 420
-	boardSize    = 4
+	Baseline     = ScreenHeight / 1.75
 )
 
 var (
 	bikeImage *ebiten.Image
+	logImage  *ebiten.Image
 )
 
 // Custom game functions
 
 func (g *Game) init() {
-	img, _, err := ebitenutil.NewImageFromFile(("./images/bike_image.png"))
+	bikeImg, _, err := ebitenutil.NewImageFromFile(("./images/bike_image.png"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	bikeImage = ebiten.NewImageFromImage(img)
+	logImg, _, err := ebitenutil.NewImageFromFile(("./images/log.png"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	bikeImage = ebiten.NewImageFromImage(bikeImg)
+	logImage = ebiten.NewImageFromImage(logImg)
+
 }
 
 func (g *Game) drawBike(screen *ebiten.Image) {
 	options := &ebiten.DrawImageOptions{}
-	w, h := bikeImage.Size()
-	//resize
-	options.GeoM.Scale(.5, .5)
+	_, h := bikeImage.Size()
 	//move to left side of screen
-	options.GeoM.Translate(float64(w)/2.0, float64(h)/2.0)
+	options.GeoM.Translate(0, Baseline-float64(h))
 	screen.DrawImage(bikeImage, options)
+}
+
+func (g *Game) drawLog(screen *ebiten.Image) {
+	options := &ebiten.DrawImageOptions{}
+	w, h := logImage.Size()
+	options.GeoM.Translate(ScreenWidth-float64(w), Baseline-float64(h))
+	screen.DrawImage(logImage, options)
 }
 
 // Update proceeds the game state.
@@ -52,6 +72,7 @@ func (g *Game) Update() error {
 func (g *Game) Draw(screen *ebiten.Image) {
 	// Write your game's rendering.
 	g.drawBike(screen)
+	g.drawLog(screen)
 }
 
 // Layout takes the outside size (e.g., the window size) and returns the (logical) screen size.
