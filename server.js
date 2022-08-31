@@ -7,6 +7,8 @@ app.get("/", function (req, res) {
   res.sendFile("test.html", { root: __dirname + "/dist" });
 });
 
-app.listen(4000, () => {
-  console.log(`listening on port 4000`);
+const port = process.env.PORT || 4000;
+
+app.listen(port, () => {
+  console.log(`listening on port ${port}`);
 });
