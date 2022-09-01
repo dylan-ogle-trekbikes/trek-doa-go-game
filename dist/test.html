@@ -9,8 +9,22 @@ if (!WebAssembly.instantiateStreaming) {
 }
 
 const go = new Go();
+
+const moveCanvas = () => {
+    let container = document.getElementById('container');
+    let canvas = document.getElementsByTagName('canvas')[0]
+    if(canvas){
+        container.appendChild(canvas)
+    }
+
+}
+
 WebAssembly.instantiateStreaming(fetch("trekdoa.wasm"), go.importObject).then(result => {
     go.run(result.instance);
+    moveCanvas()
 });
 </script>
-<body style="overflow: hidden;"></body>
+<body style="overflow: hidden;">
+    <div id="container">
+    </div>
+</body>
