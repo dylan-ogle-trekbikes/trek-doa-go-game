@@ -1,14 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"log"
-	"math/rand"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/gofont/goitalic"
+	"golang.org/x/image/font/opentype"
 
 	"trekdoagame/utils"
 )
@@ -16,12 +19,12 @@ import (
 type Game struct {
 	//player position
 	yPos int
-	vy   float64
-
-	//active logs position
+	//player y velocity
+	vy float64
+	//stack of logs
 	logXs utils.Stack
-
-	isGameOver bool
+	//current game state (start, paused, game over)
+	CurrentMode GameMode
 }
 
 const (
@@ -32,9 +35,13 @@ const (
 	Acceleration  = 1
 	LogSpawnDelay = 750
 	DefaultBikeX  = 25
+	startText     = "Press any button to start"
+	endText       = "Game Over! Press 'r' to restart"
 )
 
 var (
+	MainFont font.Face
+
 	bikeImage    *ebiten.Image
 	bikeVy       float64
 	bikeBaseline int
@@ -46,13 +53,15 @@ var (
 	lastSpawnedLog int64
 
 	isJumping = false
+	hasScored = false
 
-	isPaused = false
+	score     int
+	highScore int
 )
 
 // Custom game functions
 
-func (g *Game) init() {
+func (g *Game) initGame() {
 	bikeImg, _, err := ebitenutil.NewImageFromFile(("./images/bike_image.png"))
 	if err != nil {
 		log.Fatal(err)
@@ -68,6 +77,27 @@ func (g *Game) init() {
 	calculatedBaseline := Baseline - h
 	g.yPos = calculatedBaseline
 	bikeBaseline = calculatedBaseline
+	g.logXs.Pop()
+}
+
+func (g *Game) init() {
+
+	//font setup
+	tt, err := opentype.Parse(goitalic.TTF)
+	if err != nil {
+		log.Fatalf("Parse: %v", err)
+	}
+	MainFont, err = opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    32,
+		DPI:     72,
+		Hinting: font.HintingNone,
+	})
+	if err != nil {
+		log.Fatalf("NewFace: %v", err)
+	}
+
+	//game setup
+	g.initGame()
 }
 
 func (g *Game) drawBike(screen *ebiten.Image) {
@@ -78,195 +108,73 @@ func (g *Game) drawBike(screen *ebiten.Image) {
 	screen.DrawImage(bikeImage, options)
 }
 
-//Log functions
-
-func (g *Game) drawLog(screen *ebiten.Image, xPos float64) {
-	options := &ebiten.DrawImageOptions{}
-	_, h := logImage.Size()
-	yPos := Baseline - float64(h)
-	options.GeoM.Translate(xPos, yPos)
-	screen.DrawImage(logImage, options)
+func (g *Game) drawStart(screen *ebiten.Image) {
+	text.Draw(screen, startText, MainFont, 20, 80, color.White)
 }
 
-func (g *Game) drawLogs(screen *ebiten.Image) {
-	logsToDraw := g.logXs.Length()
-	for i := 0; i < logsToDraw; i++ {
-		logPos := g.logXs.ValueAt(i)
-		g.drawLog(screen, logPos)
-	}
+func (g *Game) drawScore(screen *ebiten.Image) {
+	scoreText := fmt.Sprintf("Score: %d", score)
+	highScoreText := fmt.Sprintf("High Score: %d", highScore)
+	text.Draw(screen, scoreText, MainFont, ScreenWidth-250, 40, color.Black)
+	text.Draw(screen, highScoreText, MainFont, ScreenWidth-250, 80, color.Black)
 }
 
-func (g *Game) spawnLogs() {
-	//wait at least 1-3 seconds before spawning a log
-	if (time.Now().UnixMilli() - lastSpawnedLog) < LogSpawnDelay {
-		return
-	}
-	//flip a coin if a log should spawn
-	rand.Seed(time.Now().UnixNano())
-
-	// flip the coin
-	shouldSpawn := rand.Intn(100)
-	if shouldSpawn > 90 {
-		g.createLog()
-	}
-
+func (g *Game) drawGame(screen *ebiten.Image) {
+	screen.Fill(color.RGBA{0xff, 0xff, 0xff, 0xff})
+	g.drawBike(screen)
+	g.drawLogs(screen)
+	g.drawScore(screen)
 }
 
-func (g *Game) createLog() {
-	g.logXs.Push(ScreenWidth)
-	lastSpawnedLog = time.Now().UnixMilli()
-}
-
-func (g *Game) removeLog() {
-	g.logXs.Pop()
-}
-
-func (g *Game) isLogOffScreen(logPos float64) bool {
-	if logPos+logWidth < 0 {
-		return true
-	}
-	return false
-}
-
-func (g *Game) moveLogs() {
-	if !g.logXs.IsEmpty() {
-		for i := 0; i < g.logXs.Length(); i++ {
-			g.moveLog(i)
-		}
-	}
-}
-
-func (g *Game) moveLog(logIndex int) {
-	g.logXs[logIndex] = g.logXs[logIndex] - logSpeed
-	if g.isLogOffScreen(g.logXs[logIndex]) {
-		// g.removeLog()
-	}
-}
-
-//Player functions
-
-func (g *Game) isJumpKeyJustPressed() bool {
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		return true
-	}
-	return false
-}
-
-func (g *Game) handleMovement() {
-	if g.isJumpKeyJustPressed() && !isJumping {
-		g.vy = -Gravity
-		g.yPos++
-		isJumping = true
-	}
-
-	g.yPos += int(g.vy)
-
-	// Gravity
-	g.vy += float64(Acceleration * .75)
-
-	//upper limit on gravity
-	if g.vy > Gravity {
-		g.vy = Gravity
-	}
-
-	//stop moving position if bike hits 0
-	if g.yPos <= 0 {
-		g.yPos = 0
-	}
-
-	//stop velocity if hits baseline
-	if g.yPos >= bikeBaseline {
-		g.yPos = bikeBaseline
-		g.vy = 0
-		isJumping = false
-	}
-}
-
-func (g *Game) anyHits() bool {
-	for i := 0; i < g.logXs.Length(); i++ {
-		if g.hit(i) {
-			return true
-		}
-	}
-	return false
-}
-
-func (g *Game) hit(logIndex int) bool {
-	const (
-		bikeWidth  = 80
-		bikeHeight = 60
-	)
-
-	var (
-		l1_x int
-		l1_y int
-		r1_x int
-		r1_y int
-
-		l2_x int
-		l2_y int
-		r2_x int
-		r2_y int
-	)
-
-	x0 := DefaultBikeX
-	x1 := DefaultBikeX + bikeWidth
-
-	y0 := g.yPos + bikeHeight
-	y1 := g.yPos
-
-	l1_x = x0
-	l1_y = y0
-
-	r1_x = x1
-	r1_y = y1
-
-	// println("Bike position is", "(", l1_x, ",", l1_y, ")", ", (", r1_x, ",", r1_y, ")")
-
-	//get log box
-	_, h := logImage.Size()
-	log_x0 := g.logXs.ValueAt(logIndex)
-	log_x1 := log_x0 + logWidth
-
-	log_y0 := Baseline - float64(h)
-	log_y1 := Baseline
-
-	l2_x = int(log_x0)
-	l2_y = int(log_y0)
-
-	r2_x = int(log_x1)
-	r2_y = int(log_y1)
-	// println("Log position is", "(", l2_x, ",", l2_y, ")", ", (", r2_x, ",", r2_y, ")")
-
-	//determine if bike and log are overlapping
-	// If one rectangle is on left side of other
-	if l1_x > r2_x || l2_x > r1_x {
-		return false
-
-	}
-
-	// If one rectangle is above other
-	if r1_y > l2_y || r2_y > l1_y {
-		return false
-	}
-	return true
+func (g *Game) drawGameOver(screen *ebiten.Image) {
+	text.Draw(screen, endText, MainFont, 20, 80, color.White)
 }
 
 // Update proceeds the game state.
-// Update is called every tick (1/60 [s] by default).
 func (g *Game) Update() error {
 
-	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
-		isPaused = !isPaused
+	if len(inpututil.PressedKeys()) > 0 && g.CurrentMode.isStart() {
+		g.CurrentMode = Active
 	}
 
-	if isPaused {
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+
+		if g.CurrentMode.isActive() {
+			g.CurrentMode = Paused
+		} else {
+			g.CurrentMode = Active
+		}
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		println(g.CurrentMode)
+		println(g.CurrentMode.isGameOver())
+		if g.CurrentMode.isGameOver() {
+			g.CurrentMode = Active
+			g.logXs.Clear()
+		}
+	}
+
+	if g.CurrentMode.isPaused() || g.CurrentMode.isGameOver() || g.CurrentMode.isStart() {
 		return nil
 	}
 
+	if g.anyScore() {
+		if !hasScored {
+			score++
+			hasScored = true
+		}
+
+	} else if hasScored {
+		hasScored = false
+	}
+
 	if g.anyHits() {
-		isPaused = true
-		println("GAME OVER")
+		g.CurrentMode = GameOver
+		if score > highScore {
+			highScore = score
+		}
+		score = 0
 	}
 
 	g.spawnLogs()
@@ -278,11 +186,16 @@ func (g *Game) Update() error {
 }
 
 // Draw draws the game screen.
-// Draw is called every frame (typically 1/60[s] for 60Hz display).
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{0xff, 0xff, 0xff, 0xff})
-	g.drawBike(screen)
-	g.drawLogs(screen)
+	if g.CurrentMode.isStart() {
+		g.drawStart(screen)
+		return
+	} else if g.CurrentMode.isActive() || g.CurrentMode.isPaused() {
+		g.drawGame(screen)
+	} else if g.CurrentMode.isGameOver() {
+		g.drawGameOver(screen)
+	}
+
 }
 
 // Layout takes the outside size (e.g., the window size) and returns the (logical) screen size.
@@ -291,9 +204,11 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 	return ScreenWidth, ScreenHeight
 }
 
+// Instantiate a new game
 func NewGame() *Game {
 	g := &Game{}
 	g.init()
+	g.CurrentMode = Start
 	return g
 }
 

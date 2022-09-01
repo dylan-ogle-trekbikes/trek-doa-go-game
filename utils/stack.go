@@ -30,3 +30,7 @@ func (s *Stack) Pop() (float64, bool) {
 		return element, true
 	}
 }
+
+func (s *Stack) Clear() {
+	*s = (*s)[:0]
+}
